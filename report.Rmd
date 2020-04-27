@@ -151,7 +151,7 @@ ag_ratio = model_data %>% ggplot(aes(y=Albumin_globulin_ratio, x=Affection_statu
 
 As can be seen from this plot combination, there are strong differences between affected and unaffected persons for the two bilirubin biomarkers and the three enzyme activity biomarkers. However, this difference is far more pronounced for the outliers in each category than for the median values. For total protein, albumin content and albumin-globulin-ratio, the two groups are very similar. This strongly indicates that bilirubin and the enzyme activities will be most useful for the model generation to distinguish between affected and unaffected persons. 
 
-# Modelling
+# Modelling and model assessment
 To be able to generate different models and test them, while at the same time disregarding the `validation` data set, the `model` data set will again be split in a 9:1 ratio to obtain a `training` data set and a `test` data set.
 
 ```{r }
@@ -249,18 +249,25 @@ First, five different machine learning models are trained. A k-nearest neighbor 
 ```{r train_normal, echo=TRUE}
 control = trainControl(method="cv", number=50, p=0.9)
 set.seed(3)
-fit_knn = train(train_data_x, train_data_y, method="knn", tuneGrid=data.frame(k=seq(11, 31, 2)), trControl=control)
+fit_knn = train(train_data_x, train_data_y, method="knn", 
+                tuneGrid=data.frame(k=seq(11, 31, 2)), 
+                trControl=control)
 set.seed(5)
-fit_rf = train(train_data_x, train_data_y, method="rf", tuneGrid=data.frame(mtry=seq(1, 10, 1)), trControl=control)
+fit_rf = train(train_data_x, train_data_y, method="rf", 
+               tuneGrid=data.frame(mtry=seq(1, 10, 1)), 
+               trControl=control)
 set.seed(8)
 fit_glm = train(train_data_x, train_data_y, method="glm")
 set.seed(13)
-fit_svm = train(train_data_x, train_data_y, method="svmRadialSigma", tuneGrid=data.frame(expand.grid(C=c(2**seq(-5, 1, 2)), sigma=c(2**seq(-5, 1, 2)))), trControl=control)
+fit_svm = train(train_data_x, train_data_y, method="svmRadialSigma", 
+                tuneGrid=data.frame(expand.grid(C=c(2**seq(-5, 1, 2)), 
+                                                sigma=c(2**seq(-5, 1, 2)))), 
+                trControl=control)
 set.seed(21)
 fit_rda = train(train_data_x, train_data_y, method="rda")
 ```
 
-For the k-nearest neighbors model, k-values between 11 and 31 were tested. A standard approach is to choose k as `sqrt(n)`, which in this case would be `r sqrt(nrow(train_data))`. Hence, sufficient values around this were chosen. For binary classification approaches, k should preferably be an uneven number. In a support vector machine, c is the penalty factor and sigma is the distance between the used training spheres. Both are usually rather small values. 
+For the k-nearest neighbors model, `k`-values between 11 and 31 were tested. A standard approach is to choose `k` as `sqrt(n)`, which in this case would be `r sqrt(nrow(train_data))`. Hence, sufficient values around this were chosen. For binary classification approaches, `k` should preferably be an uneven number. In a support vector machine, `c` is the penalty factor and `sigma` is the distance between the used training spheres. Both are usually rather small values. 
 
 These models add upon the results data frame:
 ```{r results_04}
@@ -269,27 +276,161 @@ results = bind_rows(results, data.frame(Model= c("k-nearest neighbors", "Random 
 kable(results)
 ```
 
+While some of those models perform better than the approaches based on clinical parameters/threshold or simply assigning 'affected' to everyone, kNN performs worse and SVM and RDA show the exact same accuracy. This implies that those two models also predict 'affected' for every patient.
 
-
-
-
-
-
+To further optimize the algorithms, dimension reduction via principal component analysis might help:
 
 ```{r pca}
 pca = prcomp(train_data_x)
-summary(pca) # First two PCs account for > 90 % of variability; first three for > 99 % # For the first few PCs, the enzymes appear to be most important, in PCs five and six, total and direct bilirubin play an important role
-data.frame(pca$x[,1:2], Affection_status=train_data_y) %>% 
-  ggplot(aes(PC1,PC2, fill = Affection_status))+
-  geom_point(cex=3, pch=21) + ggtitle("First two PCs")
+pca_importance = function(x) {
+  vars = x$sdev^2
+  vars = vars/sum(vars)
+  rbind(`Standard deviation` = x$sdev, `Proportion of Variance` = vars, 
+      `Cumulative Proportion` = cumsum(vars))
+}
+pca_summary = pca_importance(pca)
+pca_summary = round(pca_summary, 2)
+pca_summary = data.frame(pca_summary)
+names(pca_summary) = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10")
+kable(pca_summary)
+```
+This shows that the first two principal components already account for more than 90 % of the variance in the data. Adding the third principal component increases the explained variance to more than 99 %.
+
+For the models trained on dimension-reduced data, only three dimensions will be use; the remaining parameters are kept unchanged:
+```{r dimensions}
+k = 3
+x_train_dim = pca$x[, 1:k]
+y_train_dim = train_data_y
+x_test_dim = as.matrix(sweep(test_data_x, 2, colMeans(test_data_x))) %*% pca$rotation
+x_test_dim = x_test_dim[, 1:k]
+```
+```{r train_dim_red, echo=TRUE}
+set.seed(34)
+fit_knn_dim = train(x_train_dim, y_train_dim, method="knn", 
+                    tuneGrid=data.frame(k=seq(11, 31, 2)), 
+                    trControl=control)
+set.seed(55)
+fit_rf_dim = train(x_train_dim, y_train_dim, method="rf", 
+                   tuneGrid=data.frame(mtry=seq(1, 3, 1)), 
+                   trControl=control)
+set.seed(89)
+fit_glm_dim = train(x_train_dim, y_train_dim, method="glm") # warning
+set.seed(144)
+fit_svm_dim = train(x_train_dim, y_train_dim, method="svmRadialSigma", 
+                    tuneGrid=data.frame(expand.grid(C=c(2**seq(-5, 1, 2)), 
+                                                    sigma=c(2**seq(-5, 1, 2)))), 
+                    trControl=control)
+set.seed(233)
+fit_rda_dim = train(x_train_dim, y_train_dim, method="rda")
 ```
 
-# Results
+This adds five more data points to the results data frame:
+```{r results_05}
+results = bind_rows(results, data.frame(Model = c("k-nearest neighbors (dim. red.)", "Random forest (dim. red.)", "Generalized linear model (dim. red.)", "Support vector machine (dim. red.)", "Regularized discriminant analysis (dim. red.)"),
+                                        Accuracy = c(mean(predict(fit_knn_dim, x_test_dim) == test_data_y), mean(predict(fit_rf_dim, x_test_dim) == test_data_y), mean(predict(fit_glm_dim, x_test_dim) == test_data_y), mean(predict(fit_svm_dim, x_test_dim) == test_data_y), mean(predict(fit_rda_dim, x_test_dim) == test_data_y))))
+kable(results)
+```
+
+Apparently, most of the five algorithms perform worse or equal to the original model. Only the kNN model shows a slight increase in accuracy.
+
+Since the performances so far vary widely, an ensemble model might leverage the strengths of each of the trained models. The following ensemble model is based on the models trained with the original data (before dimension reduction). The `threshold` parameter determines, how many 'unaffected' prediction by the individual models are necessary for the ensemble model to predict 'unaffected':
+```{r ensemble_normal, echo=TRUE}
+ensemble = function(data=test_data_x, threshold=1){
+  output = data.frame(knn = rep(NA, nrow(data)))
+  output$knn = predict(fit_knn, data)
+  output$rf = predict(fit_rf, data)
+  output$glm = predict(fit_glm, data)
+  output$svm = predict(fit_svm, data)
+  output$rda = predict(fit_rda, data)
+  output$count = rowCounts(as.matrix(output), value="Unaffected")
+  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
+  output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
+  return(output)
+}
+```
+
+A similar model can be constructed for the models trained on the data after dimension reduction (same underlying principle):
+```{r ensemble_dim_red, echo=TRUE}
+ensemble_dim = function(data=x_test_dim, threshold=1){
+  output = data.frame(knn = rep(NA, nrow(data)))
+  output$knn = predict(fit_knn_dim, data)
+  output$rf = predict(fit_rf_dim, data)
+  output$glm = predict(fit_glm_dim, data)
+  output$svm = predict(fit_svm_dim, data)
+  output$rda = predict(fit_rda_dim, data)
+  output$count = rowCounts(as.matrix(output), value="Unaffected")
+  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
+  output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
+  return(output)
+}
+```
+
+Using those two ensemble models (with varying thresholds) further extends the results data frame to its final dimensions:
+
+```{r results_06}
+results = bind_rows(results, data.frame(Model = c("Ensemble (1)", "Ensemble (2)", "Ensemble (3)", "Ensemble (4)", "Ensemble (5)"), 
+                                        Accuracy = c(mean(ensemble(data=test_data_x, threshold=1)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=2)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=3)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=4)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=5)$prediction == test_data_y))))
+results = bind_rows(results, data.frame(Model = c("Ensemble (dim. red.) (1)", "Ensemble (dim. red.) (2)", "Ensemble (dim. red.) (3)", "Ensemble (dim. red.) (4)", "Ensemble (dim. red.) (5)"), 
+                                        Accuracy = c(mean(ensemble_dim(data=x_test_dim, threshold=1)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=2)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=3)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=4)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=5)$prediction == test_data_y))))
+kable(results)
+```
+
+These results show that the best performing model is still the GLM without dimension reduction, followed by kNN before dimension reduction and the ensemble before dimension reduction (using `threshold = 1`). The GLM also shows high values for further performance parameters:
+
+```{r GLM_performance}
+glm_performance = confusionMatrix(predict(fit_glm, test_data_x), test_data_y)
+glm_performance = as.data.frame(glm_performance)
+names(glm_performance) = c("Value")
+kable(glm_performance)
+```
+
+GLM is therefore chosen as the final model and trained on the `model` data set:
+
+```{r glm_train, echo=TRUE}
+set.seed(377)
+fit_glm_final = train(model_data_x, model_data_y, method="glm")
+```
+
+This final model could now be tested on the `validation` data. However, as a final check, the performance on the data set created from the observations with missing values of the albumin-globulin-ratio is tested. To prevent errors due to the `NA`s, the mean albumin-globulin-ratio of the `model` data will be used as a proxy value (`r mean(model_data$Albumin_globulin_ratio)`).
+
+```{r prep_missing}
+missing_data$Albumin_globulin_ratio = mean(model_data$Albumin_globulin_ratio)
+missing_data$Affection_status = as.factor(missing_data$Affection_status)
+missing_data = missing_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
+missing_data_x = missing_data %>% dplyr::select(-Affection_status)
+missing_data_y = missing_data %>% pull(Affection_status)
+```
+
+GLM achieves an accuracy of `r mean(predict(fit_glm_final, missing_data_x) == missing_data_y)`, i.e. three out of four are predicted correctly.
+
+Now for the performance of the GLM on the validation data:
+
+```{r prep_validation}
+validation_data$Affection_status = as.factor(validation_data$Affection_status)
+validation_data = validation_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
+validation_data_x = validation_data %>% dplyr::select(-Affection_status)
+validation_data_y = validation_data %>% pull(Affection_status)
+```
+
+The accuracy of this model is `r mean(predict(fit_glm_final, validation_data_x) == validation_data_y)`. Further performance parameters can be seen in the following table:
+
+```{r validation_check}
+glm_performance = confusionMatrix(predict(fit_glm, validation_data_x), validation_data_y)
+glm_performance = as.data.frame(glm_performance)
+names(glm_performance) = c("Value")
+kable(glm_performance)
+```
+
+This shows ...
 
 
+# Final results
+Table again + performance on validation data + performance on missing data
+Bind an empty row and then the new values to the results df
 
 # Conclusion
 
+The present data implies that not every patient who is affected by a liver disease shows highly abnormal values for the biomarkers contained in this data set. It has been shown previously that patients with (chronic) liver disease may present without clinical symptons and values of liver function tests well within the accepted range (Ahmed et al., 2018), which is in line with these findings. 
 
 
 # References
@@ -303,11 +444,3 @@ Gowda S, Desai PB, Hull VV, Math AAK, Vernekar SN, Kulkarni SS.  A review on lab
 
 Hall P, Cash J. What is the Real Function of the Liver ‘Function’ Tests? 2012. Ulster Med J. doi: NA
 
-
-
-#an introduction/overview/executive summary section that describes the dataset and variables, and summarizes the goal of the
-#project and key steps that were performed;
-#a methods/analysis section that explains the process and techniques used, including data cleaning, data exploration and
-#visualization, insights gained, and your modeling approaches (you must use at least two different models or algorithms);
-#a results section that presents the modeling results and discusses the model performance; and
-#a conclusion section that gives a brief summary of the report, its potential impact, its limitations, and future work.
