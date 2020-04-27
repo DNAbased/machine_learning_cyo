@@ -378,14 +378,17 @@ kable(results)
 These results show that the best performing model is still the GLM without dimension reduction, followed by kNN before dimension reduction and the ensemble before dimension reduction (using `threshold = 1`). The GLM also shows high values for further performance parameters:
 
 ```{r GLM_performance}
-glm_performance = confusionMatrix(predict(fit_glm, test_data_x), test_data_y)
+glm_performance = confusionMatrix(predict(fit_glm, test_data_x), test_data_y)$byClass
 glm_performance = as.data.frame(glm_performance)
 names(glm_performance) = c("Value")
 kable(glm_performance)
 ```
 
 GLM is therefore chosen as the final model and trained on the `model` data set:
-
+```{r prep_model_data}
+model_data_x = model_data %>% dplyr::select(-Affection_status)
+model_data_y = model_data %>% pull(Affection_status)
+```
 ```{r glm_train, echo=TRUE}
 set.seed(377)
 fit_glm_final = train(model_data_x, model_data_y, method="glm")
@@ -403,6 +406,7 @@ missing_data_y = missing_data %>% pull(Affection_status)
 
 GLM achieves an accuracy of `r mean(predict(fit_glm_final, missing_data_x) == missing_data_y)`, i.e. three out of four are predicted correctly.
 
+
 Now for the performance of the GLM on the validation data:
 
 ```{r prep_validation}
@@ -415,7 +419,7 @@ validation_data_y = validation_data %>% pull(Affection_status)
 The accuracy of this model is `r mean(predict(fit_glm_final, validation_data_x) == validation_data_y)`. Further performance parameters can be seen in the following table:
 
 ```{r validation_check}
-glm_performance = confusionMatrix(predict(fit_glm, validation_data_x), validation_data_y)
+glm_performance = confusionMatrix(predict(fit_glm, validation_data_x), validation_data_y)$byClass
 glm_performance = as.data.frame(glm_performance)
 names(glm_performance) = c("Value")
 kable(glm_performance)
