@@ -19,6 +19,8 @@ if(!require(klaR)) install.packages("klaR",
                                        repos = "http://cran.us.r-project.org")
 if(!require(matrixStats)) install.packages("matrixStats", 
                                     repos = "http://cran.us.r-project.org")
+if(!require(patchwork)) install.packages("patchwork", 
+                                           repos = "http://cran.us.r-project.org")
 
 # Download and read the data (used because it was mentioned in the kaggle data sets)
 all_data = fread("https://archive.ics.uci.edu/ml/machine-learning-databases/00225/Indian%20Liver%20Patient%20Dataset%20(ILPD).csv")
@@ -171,7 +173,7 @@ ref_values = data.frame(Parameter = c("Total bilirubin", "Direct bilirubin", "Al
                         Reference_lower = c(2, 0, 41, 7, 0),
                         Reference_upper = c(21, 8, 133, 56, 35))
 
-# Create second algorithm based on clinical factors (at least one/two/three values outside the reference range)
+# Create third algorithm: based on clinical factors (at least one/two/three values outside the reference range)
 clinical = function(data=test_data_x, ref=ref_values, threshold=1) {
   data %>% mutate(ToBi = ifelse(Total_bilirubin < ref_values[1,3] | Total_bilirubin > ref_values[1,4], 1, 0)) %>%
     mutate(DiBi = ifelse(Direct_bilirubin < ref_values[2,3] | Direct_bilirubin > ref_values[2,4], 1, 0)) %>%
@@ -263,7 +265,7 @@ results = bind_rows(results, data.frame(Model = c("k-nearest neighbors (dim. red
 
 
 # Ensemble before dimension reduction
-ensemble = function(data=test_data_x, threshold=0){
+ensemble = function(data=test_data_x, threshold=1){
   output = data.frame(knn = rep(NA, nrow(data)))
   output$knn = predict(fit_knn, data)
   output$rf = predict(fit_rf, data)
@@ -359,7 +361,7 @@ ensemble_final = function(data=model_data_x, threshold=1){
 # Fill in missing values with mean of model data
 missing_data$Albumin_globulin_ratio = mean(model_data$Albumin_globulin_ratio)
 # Prepare missing data (recoding)
-missing_data = missing_data %>% mutate(Affection_status = ifelse(Affection_status == 1, "Affected", "Unaffected"))
+# missing_data = missing_data %>% mutate(Affection_status = ifelse(Affection_status == 1, "Affected", "Unaffected"))
 missing_data$Affection_status = as.factor(missing_data$Affection_status)
 missing_data = missing_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
 missing_data_x = missing_data %>% dplyr::select(-Affection_status)
@@ -377,7 +379,7 @@ validation_data_y = validation_data %>% pull(Affection_status)
 
 # References
 # Gowda S, Desai PB, Hull VV, Math AAK, Vernekar SN, Kulkarni SS.  A review on laboratory liver function tests. 2009. Pan Afr Med J. doi: 10.11604/pamj.25/11/2009.3.17.125
-
+# Hall P, Cash J. What is the Real Function of the Liver ‘Function’ Tests? 2012. Ulster Med J. doi: NA
 
 
 
