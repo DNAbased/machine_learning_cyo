@@ -19,8 +19,12 @@ if(!require(klaR)) install.packages("klaR",
                                        repos = "http://cran.us.r-project.org")
 if(!require(matrixStats)) install.packages("matrixStats", 
                                     repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", 
+                                     repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", 
+                                          repos = "http://cran.us.r-project.org")
 if(!require(patchwork)) install.packages("patchwork", 
-                                           repos = "http://cran.us.r-project.org")
+                                         repos = "http://cran.us.r-project.org")
 
 # Download and read the data (used because it was mentioned in the kaggle data sets)
 all_data = fread("https://archive.ics.uci.edu/ml/machine-learning-databases/00225/Indian%20Liver%20Patient%20Dataset%20(ILPD).csv")
@@ -28,7 +32,7 @@ all_data = fread("https://archive.ics.uci.edu/ml/machine-learning-databases/0022
 # Add the column names (as per https://archive.ics.uci.edu/ml/datasets/ILPD+(Indian+Liver+Patient+Dataset))
 names(all_data) = c("Age", "Gender", "Total_bilirubin", "Direct_bilirubin", "Alkaline_phosphatase", "Alanine_aminotransferase", "Aspartate_aminotransferase", "Total_protein", "Albumin", "Albumin_globulin_ratio", "Affection_status")
 
-# Check is any data is missing
+# Check if any data is missing
 sum(is.na(all_data)) # Yes four missing values, where? # Albumin_globulin_ratio; also missing in original data set
 
 # Move rows with missing values to separate data frame, once the model is finished, check if prediction is possible when filling in the missing values
@@ -39,9 +43,6 @@ all_data = all_data %>% filter(!is.na(Albumin_globulin_ratio))
 
 # Check the dimensions of the data set
 dim(all_data) # 579 observations # 11 variables
-
-# Add unique ID to each observation
-all_data = all_data %>% mutate(Identifier = as.numeric(row.names(all_data)))
 
 # Recode affection status
 all_data = all_data %>% mutate(Affection_status = ifelse(Affection_status == 1, "Affected", "Unaffected"))
@@ -284,19 +285,6 @@ confusionMatrix(ensemble()$prediction, test_data_y)
 results = bind_rows(results, data.frame(Model = c("Ensemble (1)", "Ensemble (2)", "Ensemble (3)", "Ensemble (4)", "Ensemble (5)"), 
                                         Accuracy = c(mean(ensemble(data=test_data_x, threshold=1)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=2)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=3)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=4)$prediction == test_data_y), mean(ensemble(data=test_data_x, threshold=5)$prediction == test_data_y))))
 
-# Test ensemble without SVM and RDA
-ensemble_test = function(data=test_data_x, threshold=1){
-  output = data.frame(knn = rep(NA, nrow(data)))
-  output$knn = predict(fit_knn, data)
-  output$rf = predict(fit_rf, data)
-  output$glm = predict(fit_glm, data)
-  output$count = rowCounts(as.matrix(output), value="Unaffected")
-  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
-  output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
-  return(output)
-}
-# Use this ensemble; accuracy is slightly lower than solely using GLM, but specificity is better
-
 # Ensemble after dimension reduction
 ensemble_dim = function(data=x_test_dim, threshold=1){
   output = data.frame(knn = rep(NA, nrow(data)))
@@ -318,44 +306,14 @@ results = bind_rows(results, data.frame(Model = c("Ensemble (dim. red.) (1)", "E
                                         Accuracy = c(mean(ensemble_dim(data=x_test_dim, threshold=1)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=2)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=3)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=4)$prediction == test_data_y), mean(ensemble_dim(data=x_test_dim, threshold=5)$prediction == test_data_y))))
 
 
-# note: no units given for any of the values, thus inferred from standard values
-
-### Check accuracy first, then use precision/recall/F-measure/specificity/sensitivity to decide on a final model
-
 # Create training set for complete model data
 model_data_x = model_data %>% dplyr::select(-Affection_status, -Identifier)
 model_data_y = model_data %>% pull(Affection_status)
 
-# Train final models on the original model data
+# Train final model on the original model data
 # set.seed(377, sample.kind="Rounding")
 set.seed(377)
-fit_knn_final = train(model_data_x, model_data_y, method="knn", tuneGrid=data.frame(k=seq(11, 31, 2)), trControl=control)
-# set.seed(610, sample.kind="Rounding")
-set.seed(610)
-fit_rf_final = train(model_data_x, model_data_y, method="rf", tuneGrid=data.frame(mtry=seq(1, 3, 1)), trControl=control)
-# set.seed(987, sample.kind="Rounding")
-set.seed(987)
 fit_glm_final = train(model_data_x, model_data_y, method="glm")
-# set.seed(1597, sample.kind="Rounding")
-set.seed(1597)
-fit_svm_final = train(model_data_x, model_data_y, method="svmRadialSigma", tuneGrid=data.frame(expand.grid(C=c(2**seq(-5, 1, 2)), sigma=c(2**seq(-5, 1, 2)))), trControl=control)
-# set.seed(1597, sample.kind="Rounding")
-set.seed(2584)
-fit_rda_final = train(model_data_x, model_data_y, method="rda")
-
-# Create final ensemble algorithm using those models
-ensemble_final = function(data=model_data_x, threshold=1){
-  output = data.frame(knn = rep(NA, nrow(data)))
-  output$knn = predict(fit_knn_final, data)
-  output$rf = predict(fit_rf_final, data)
-  output$glm = predict(fit_glm_final, data)
-  output$svm = predict(fit_svm_final, data)
-  output$rda = predict(fit_rda_final, data)
-  output$count = rowCounts(as.matrix(output), value="Unaffected")
-  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
-  output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
-  return(pull(output, prediction))
-}
 
 # Obtain performance parameters for the missing data
 # Fill in missing values with mean of model data
@@ -367,6 +325,8 @@ missing_data = missing_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
 missing_data_x = missing_data %>% dplyr::select(-Affection_status)
 missing_data_y = missing_data %>% pull(Affection_status)
 
+# Performance:
+results = bind_rows(results, data.frame(Model = "GLM on missing data", Accuracy = mean(predict(fit_glm_final, missing_data_x) == missing_data_y)))
 
 # Obtain final performance parameters on the validation data
 # Prepare validation data (recoding)
@@ -375,11 +335,17 @@ validation_data = validation_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2)
 validation_data_x = validation_data %>% dplyr::select(-Affection_status, -Identifier)
 validation_data_y = validation_data %>% pull(Affection_status)
 
+# Performance
+results = bind_rows(results, data.frame(Model = "GLM on validation data", Accuracy = mean(predict(fit_glm_final, validation_data_x) == validation_data_y)))
 
+# Round accuracies
+results$Accuracy = round(results$Accuracy, 3)
 
-# References
-# Gowda S, Desai PB, Hull VV, Math AAK, Vernekar SN, Kulkarni SS.  A review on laboratory liver function tests. 2009. Pan Afr Med J. doi: 10.11604/pamj.25/11/2009.3.17.125
-# Hall P, Cash J. What is the Real Function of the Liver ‘Function’ Tests? 2012. Ulster Med J. doi: NA
+# Final results A
+View(results) # All obtained accuracies
 
-
-
+# Final results B
+glm_performance = confusionMatrix(predict(fit_glm_final, validation_data_x), validation_data_y)$byClass
+glm_performance = as.data.frame(glm_performance)
+names(glm_performance) = c("Value")
+View(glm_performance) # Further performance parameters of the final model on the validation data
