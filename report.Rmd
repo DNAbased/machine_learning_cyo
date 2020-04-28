@@ -46,7 +46,7 @@ The aim of this project is to use the available biomarker data to predict a pers
 
 # Data exploration (exploratory data analysis, EDA)
 ## The data set
-The data set is contained in a comma-separated file (.csv), which is downloaded from the UCI repository. Since this file does not contain a header, the relevant column names are be taken from the description website (https://archive.ics.uci.edu/ml/datasets/ILPD+(Indian+Liver+Patient+Dataset)) and added to the resulting data frame. Here are the first three entries:
+The data set is contained in a comma-separated file (.csv), which is downloaded from the UCI repository. Since this file does not contain a header, the relevant column names are be taken from the description website (https://archive.ics.uci.edu/ml/datasets/ILPD+(Indian+Liver+Patient+Dataset)) and added to the resulting data frame. Here are the first three entries (note that the last column has been recoded as mentioned above):
 ```{r download_data}
 all_data = fread("https://archive.ics.uci.edu/ml/machine-learning-databases/00225/Indian%20Liver%20Patient%20Dataset%20(ILPD).csv")
 names(all_data) = c("Age", "Gender", "Total_bilirubin", "Direct_bilirubin", "Alkaline_phosphatase", "Alanine_aminotransferase", "Aspartate_aminotransferase", "Total_protein", "Albumin", "Albumin_globulin_ratio", "Affection_status")
@@ -54,6 +54,7 @@ all_data = all_data %>% mutate(Affection_status = ifelse(Affection_status == 1, 
 kable(head(all_data, 3)) %>%
   row_spec(0, angle = 90)
 ```
+
 
 In total, there are `r nrow(all_data)` observations of `r ncol(all_data)` variables in the data set. To make sure that the algorithms created later on will be valid, an important step is to see whether any data is missing. Using R's `is.na` function, it becomes apparent that information on the albumin-globulin-ratio is missing for four patients. These will be moved to a new data frame and analyzed separately in the end:
 
@@ -63,6 +64,7 @@ all_data = all_data %>% filter(!is.na(Albumin_globulin_ratio))
 kable(missing_data) %>% row_spec(0, angle = 90)
 ```
 
+
 The new total number of observations in the data set is `r nrow(all_data)`.
 The following table shows the distribution of the affection status in the data:
 
@@ -70,9 +72,10 @@ The following table shows the distribution of the affection status in the data:
 all_data %>% dplyr::select(Affection_status) %>% table() %>% prop.table() %>% kable()
 ```
 
+
 There is a slight imbalance in the data, with more affected than unaffected patient's available. However, this is still moderate and should not have consequences on the model generation.
 
-To assess the accuracy of the different models, the data set is split into a `model` data set and a `validation` data set in a 9:1 ratio. This ensures that sufficient data is available for the training on the `model` data, while at the same time preventing overtraining. All further data visualization will be performed on the `model` data. The distribution of the affection status is similar between the two generated data sets.
+To assess the accuracy of the different models, the data set is split into a `model` data set and a `validation` data set in a 9:1 ratio. This ensures that sufficient data is available for the training on the `model` data, while at the same time preventing overtraining. All further data visualization will be performed on the `model` data. The distribution of the affection status is similar between the two generated data sets:
 
 `Model data`:
 ```{r split_validation}
@@ -92,27 +95,29 @@ validation_data %>% dplyr::select(Affection_status) %>% table() %>% prop.table()
 ## Data visualization
 The first variable is the age of the patients:
 
-```{r age_plot}
+```{r age_plot, fig.width = 4.2, fig.height = 3}
 model_data %>% ggplot(aes(x=Age)) + geom_histogram(bins=20) + ggtitle("Age distribution") + ylab("Count")
 ```
+
 As can be seen, the age looks somewhat normally distributed. The youngest patient is `r min(model_data$Age)` years old. The age of the oldest patient is given as `r max(model_data$Age)` years. However, the data repository states that the age of every patient above the age of 90 was set to 90. The median age of the patients is `r median(model_data$Age)`. 
 
 The second variable is the gender:
 
-```{r gender_plot}
+```{r gender_plot, fig.width = 4.2, fig.height = 3}
 model_data %>% ggplot(aes(x=Gender)) + geom_bar() + ggtitle("Gender distribution") + ylab("Count")
 ```
+
 There are approximately three times as many men as women in the data. As it has been shown that there are gender differences in liver disease prevalence (Buzzetti et al., 2017), this might introduce a bias into the data. 
 
 Plotting both of the first two variables at once shows that the age distribution between the genders mimic each other fairly well:
 
-```{r age_gender_plot}
+```{r age_gender_plot, fig.width = 4.2, fig.height = 3}
 model_data %>% ggplot(aes(x=Age, fill=Gender)) + geom_histogram(bins=20, alpha=0.5, position="identity") + ggtitle("Age distribution stratified by gender") + ylab("Count")
 ```
 
-As the distribution of the affection status has been demonstrated in the tables above, we can instead complement this by the following visualization, which incorporates all the previous dimensions of information into one plot. In this plot, the points show the age and affection status stratified by gender (color), while the respective Tufte boxplots (minimalistic versions of standard boxplots) show this distribution irrespective of gender, i.e. age versus affection status.
+As the distribution of the affection status has been demonstrated in the tables above, we can instead complement this by the following visualization, which incorporates all the previous dimensions of information into one plot. In this plot, the points show the age and affection status stratified by gender (color), while the respective Tufte boxplots (minimalistic versions of standard boxplots; black) show this distribution irrespective of gender, i.e. age versus affection status:
 
-```{r age_gender_aff_plot}
+```{r age_gender_aff_plot, fig.width = 5.6, fig.height = 4}
 model_data %>% ggplot(aes(y=Age, x=Affection_status, color=Gender)) + geom_sina() + geom_tufteboxplot(colour="black") + ggtitle("Affection status stratified by age and gender")
 model_data$Affection_status = as.factor(model_data$Affection_status)
 model_data = model_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
@@ -121,6 +126,7 @@ model_data = model_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
 This plot shows that neither age nor gender are perfectly matched between the two groups of affection status. This might be due to an imbalance in the data but might also reflect real differences in disease etiology and prevalence. 
 
 Next up is the biomarker data. Present in the data set are:
+
 * Total bilirubin (degradation product of hemoglobin)
 * Direct bilirubin (sub-portion of the above)
 * Alkaline phosphatase activity (ALP; enzyme)
@@ -130,7 +136,7 @@ Next up is the biomarker data. Present in the data set are:
 * Albumin (a protein family)
 * Albumin-globulin-ratio (ratio between albumin and another protein family, globulin)
 
-The following patchwork plot visualizes all the above mentioned data at once for an easier overview. Note that both bilirubin and all three enzymes y-axes have been `sqrt` transformed. 
+The following patchwork plot visualizes all the above mentioned data at once for an easier overview. Note that both bilirubin plot y-axes and all three enzymes plot y-axes have been `sqrt` transformed. 
 
 ```{r biomarker_data}
 total_bilirubin = model_data %>% ggplot(aes(y=Total_bilirubin, x=Affection_status)) + geom_boxplot() + 
@@ -149,12 +155,13 @@ ag_ratio = model_data %>% ggplot(aes(y=Albumin_globulin_ratio, x=Affection_statu
 (total_bilirubin + direct_bilirubin) / (alkaline + alanine + aspartate) / (total_protein + albumin + ag_ratio)
 ```
 
+
 As can be seen from this plot combination, there are strong differences between affected and unaffected persons for the two bilirubin biomarkers and the three enzyme activity biomarkers. However, this difference is far more pronounced for the outliers in each category than for the median values. For total protein, albumin content and albumin-globulin-ratio, the two groups are very similar. This strongly indicates that bilirubin and the enzyme activities will be most useful for the model generation to distinguish between affected and unaffected persons. 
 
 # Modelling and model assessment
 To be able to generate different models and test them, while at the same time disregarding the `validation` data set, the `model` data set will again be split in a 9:1 ratio to obtain a `training` data set and a `test` data set.
 
-```{r }
+```{r split_data}
 # set.seed(1, sample.kind="Rounding")
 set.seed(1)
 test_index = createDataPartition(y = model_data$Affection_status, times = 1, p = 0.1, list = FALSE)
@@ -188,13 +195,14 @@ guess = function(data){
   return(prediction)
 }
 ```
-To keep track of all model's performances, a separated data frame containing the obtained accuracies on the `test` data set is created:
+To keep track of all model's performances, a separate data frame containing the obtained accuracies on the `test` data set is created:
 ```{r results_01}
 # set.seed(2, sample.kind="Rounding")
 set.seed(2)
 results = data.frame(Model = "Guessing", Accuracy = mean(guess(test_data_x) == test_data_y))
 kable(results)
 ```
+
 
 A second option for a baseline algorithm is one which always predicts 'affected'. This will naturally have better performance then the guessing algorithm, due to the slightly skewed data:
 ```{r affected, echo=TRUE}
@@ -209,9 +217,10 @@ affected = function(data){
 results = bind_rows(results, data.frame(Model = "All affected", Accuracy = mean(affected(test_data_x) == test_data_y)))
 kable(results)
 ```
-As expected, this algorithm is superior to plain guessing. 
+As expected, this algorithm is indeed superior to plain guessing. 
 
-A final algorithm, which is not based on machine learning itself is looking at the expected values for the present biomarkers and deciding on 'affected' status, once a certain number of biomarkers are outside of their given range. To do this, the following values could be used (Gowda et al., 2009):
+
+A final, relatively simple, algorithm, which is not based on machine learning itself is looking at the expected values for the present biomarkers and deciding on 'affected' status, once a certain number of biomarkers are outside of their given range. To do this, the following values could be used (Gowda et al., 2009):
 ```{r ref_values}
 ref_values = data.frame(Parameter = c("Total bilirubin", "Direct bilirubin", "Alkaline phosphatase", "Alanine aminotransferase", "Aspartate aminotransferase"),
                         Unit = c("µmol/L", "µmol/L", "U/L", "U/L", "U/L"),
@@ -221,13 +230,18 @@ kable(ref_values)
 ```
 
 The following algorithm can then be used to predict the affection status based on the number of biomarkers exceeding the threshold:
-```{r clinical, include=TRUE}
+```{r clinical, echo=TRUE}
 clinical = function(data=test_data_x, ref=ref_values, threshold=1) {
-  data %>% mutate(ToBi = ifelse(Total_bilirubin < ref_values[1,3] | Total_bilirubin > ref_values[1,4], 1, 0)) %>%
-    mutate(DiBi = ifelse(Direct_bilirubin < ref_values[2,3] | Direct_bilirubin > ref_values[2,4], 1, 0)) %>%
-    mutate(AlPh = ifelse(Alkaline_phosphatase < ref_values[3,3] | Alkaline_phosphatase > ref_values[3,4], 1, 0)) %>%
-    mutate(AlAm = ifelse(Alanine_aminotransferase < ref_values[4,3] | Alanine_aminotransferase > ref_values[4,4], 1, 0)) %>%
-    mutate(AsAm = ifelse(Aspartate_aminotransferase < ref_values[5,3] | Aspartate_aminotransferase > ref_values[5,4], 1, 0)) %>%
+  data %>% mutate(ToBi = ifelse(Total_bilirubin < ref_values[1,3] |
+                                  Total_bilirubin > ref_values[1,4], 1, 0)) %>%
+    mutate(DiBi = ifelse(Direct_bilirubin < ref_values[2,3] |
+                           Direct_bilirubin > ref_values[2,4], 1, 0)) %>%
+    mutate(AlPh = ifelse(Alkaline_phosphatase < ref_values[3,3] |
+                           Alkaline_phosphatase > ref_values[3,4], 1, 0)) %>%
+    mutate(AlAm = ifelse(Alanine_aminotransferase < ref_values[4,3] |
+                           Alanine_aminotransferase > ref_values[4,4], 1, 0)) %>%
+    mutate(AsAm = ifelse(Aspartate_aminotransferase < ref_values[5,3] |
+                           Aspartate_aminotransferase > ref_values[5,4], 1, 0)) %>%
     mutate(All = ToBi + DiBi + AlPh + AlAm + AsAm) %>%
     mutate(prediction = ifelse(All >= threshold, "Affected", "Unaffected")) %>%
     pull(prediction)
@@ -240,7 +254,9 @@ results = bind_rows(results, data.frame(Model = c("Clinical parameters (1)", "Cl
                                         Accuracy = c(mean(clinical(data=test_data_x, threshold=1) == test_data_y), mean(clinical(data=test_data_x, threshold=2) == test_data_y), mean(clinical(data=test_data_x, threshold=3) == test_data_y), mean(clinical(data=test_data_x, threshold=4) == test_data_y), mean(clinical(data=test_data_x, threshold=5) == test_data_y))))
 kable(results)
 ```
-Here, even the best-performing version of the algorithm (which predicts 'affected' once one of the used biomarkers exceeds its threshold) performs equal to predicting 'affected' for everyone (i.e. accuracy = proportion of affected patients).
+
+Here, even the best-performing version of the algorithm (which predicts 'affected' once one of the used biomarkers exceeds its respective threshold) performs equal to predicting 'affected' for everyone (i.e. accuracy = proportion of affected patients).
+
 
 To remedy this, 'true' machine learning algorithms will be used, which can determine more intricate relationships between the individual biomarkers (as well as age and gender). The `train` function of the `caret` package will be used for the generation of each model. Where applicable 50-fold cross-validation (9:1 ratio) is used.
 
@@ -267,7 +283,7 @@ set.seed(21)
 fit_rda = train(train_data_x, train_data_y, method="rda")
 ```
 
-For the k-nearest neighbors model, `k`-values between 11 and 31 were tested. A standard approach is to choose `k` as `sqrt(n)`, which in this case would be `r sqrt(nrow(train_data))`. Hence, sufficient values around this were chosen. For binary classification approaches, `k` should preferably be an uneven number. In a support vector machine, `c` is the penalty factor and `sigma` is the distance between the used training spheres. Both are usually rather small values. 
+For the k-nearest neighbors model, `k`-values between 11 and 31 were tested. A standard approach is to choose `k` as `sqrt(n)`, which in this case would be `r sqrt(nrow(train_data))`. Hence, sufficient values around this were chosen. For binary classification approaches, `k` should preferably be an uneven number. For the random forest model, `mtry` is tested for every possible value (based on the number of relevant variables). In a support vector machine, `C` is the penalty factor and `sigma` is the distance between the used training spheres. Both are usually rather small values. 
 
 These models add upon the results data frame:
 ```{r results_04}
@@ -277,6 +293,7 @@ kable(results)
 ```
 
 While some of those models perform better than the approaches based on clinical parameters/threshold or simply assigning 'affected' to everyone, kNN performs worse and SVM and RDA show the exact same accuracy. This implies that those two models also predict 'affected' for every patient.
+
 
 To further optimize the algorithms, dimension reduction via principal component analysis might help:
 
@@ -296,7 +313,7 @@ kable(pca_summary)
 ```
 This shows that the first two principal components already account for more than 90 % of the variance in the data. Adding the third principal component increases the explained variance to more than 99 %.
 
-For the models trained on dimension-reduced data, only three dimensions will be use; the remaining parameters are kept unchanged:
+Therefore, only three dimensions will be used for the models trained on dimension-reduced data; the remaining parameters are kept unchanged with regard to the previous model training:
 ```{r dimensions}
 k = 3
 x_train_dim = pca$x[, 1:k]
@@ -314,7 +331,7 @@ fit_rf_dim = train(x_train_dim, y_train_dim, method="rf",
                    tuneGrid=data.frame(mtry=seq(1, 3, 1)), 
                    trControl=control)
 set.seed(89)
-fit_glm_dim = train(x_train_dim, y_train_dim, method="glm") # warning
+fit_glm_dim = train(x_train_dim, y_train_dim, method="glm")
 set.seed(144)
 fit_svm_dim = train(x_train_dim, y_train_dim, method="svmRadialSigma", 
                     tuneGrid=data.frame(expand.grid(C=c(2**seq(-5, 1, 2)), 
@@ -331,9 +348,9 @@ results = bind_rows(results, data.frame(Model = c("k-nearest neighbors (dim. red
 kable(results)
 ```
 
-Apparently, most of the five algorithms perform worse or equal to the original model. Only the kNN model shows a slight increase in accuracy.
+Apparently, most of the five algorithms perform worse than or equal to the original model. Only the kNN model shows a slight increase in accuracy.
 
-Since the performances so far vary widely, an ensemble model might leverage the strengths of each of the trained models. The following ensemble model is based on the models trained with the original data (before dimension reduction). The `threshold` parameter determines, how many 'unaffected' prediction by the individual models are necessary for the ensemble model to predict 'unaffected':
+Since the performances so far vary widely, an ensemble model might leverage the strengths of each of the trained models. The following ensemble model is based on the models trained with the original data (before dimension reduction). The `threshold` parameter determines how many 'unaffected' predictions by the individual models are necessary for the ensemble model itself to predict 'unaffected':
 ```{r ensemble_normal, echo=TRUE}
 ensemble = function(data=test_data_x, threshold=1){
   output = data.frame(knn = rep(NA, nrow(data)))
@@ -343,13 +360,15 @@ ensemble = function(data=test_data_x, threshold=1){
   output$svm = predict(fit_svm, data)
   output$rda = predict(fit_rda, data)
   output$count = rowCounts(as.matrix(output), value="Unaffected")
-  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
+  output = output %>% mutate(prediction = ifelse(count>=threshold,
+                                                 "Unaffected", "Affected"))
   output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
   return(output)
 }
 ```
 
-A similar model can be constructed for the models trained on the data after dimension reduction (same underlying principle):
+
+A similar model can be constructed for the models trained on the data after dimension reduction (based on the same underlying principle as described above):
 ```{r ensemble_dim_red, echo=TRUE}
 ensemble_dim = function(data=x_test_dim, threshold=1){
   output = data.frame(knn = rep(NA, nrow(data)))
@@ -359,13 +378,14 @@ ensemble_dim = function(data=x_test_dim, threshold=1){
   output$svm = predict(fit_svm_dim, data)
   output$rda = predict(fit_rda_dim, data)
   output$count = rowCounts(as.matrix(output), value="Unaffected")
-  output = output %>% mutate(prediction = ifelse(count>=threshold, "Unaffected", "Affected"))
+  output = output %>% mutate(prediction = ifelse(count>=threshold,
+                                                 "Unaffected", "Affected"))
   output$prediction = factor(output$prediction, levels=c("Affected", "Unaffected"))
   return(output)
 }
 ```
 
-Using those two ensemble models (with varying thresholds) further extends the results data frame to its final dimensions:
+Using those two ensemble models (with varying thresholds from one to five) further extends the results data frame to its final dimensions:
 
 ```{r results_06}
 results = bind_rows(results, data.frame(Model = c("Ensemble (1)", "Ensemble (2)", "Ensemble (3)", "Ensemble (4)", "Ensemble (5)"), 
@@ -384,6 +404,7 @@ names(glm_performance) = c("Value")
 kable(glm_performance)
 ```
 
+
 GLM is therefore chosen as the final model and trained on the `model` data set:
 ```{r prep_model_data}
 model_data_x = model_data %>% dplyr::select(-Affection_status)
@@ -394,7 +415,7 @@ set.seed(377)
 fit_glm_final = train(model_data_x, model_data_y, method="glm")
 ```
 
-This final model could now be tested on the `validation` data. However, as a final check, the performance on the data set created from the observations with missing values of the albumin-globulin-ratio is tested. To prevent errors due to the `NA`s, the mean albumin-globulin-ratio of the `model` data will be used as a proxy value (`r mean(model_data$Albumin_globulin_ratio)`).
+This final model could now be tested on the `validation` data. However, as a final check, the performance on the data set created from the observations with missing values of the albumin-globulin-ratio is tested. To prevent errors due to the `NA`s for this variable, the mean albumin-globulin-ratio of the `model` data will be used as a proxy value (`r mean(model_data$Albumin_globulin_ratio)`).
 
 ```{r prep_missing}
 missing_data$Albumin_globulin_ratio = mean(model_data$Albumin_globulin_ratio)
@@ -404,7 +425,7 @@ missing_data_x = missing_data %>% dplyr::select(-Affection_status)
 missing_data_y = missing_data %>% pull(Affection_status)
 ```
 
-GLM achieves an accuracy of `r mean(predict(fit_glm_final, missing_data_x) == missing_data_y)`, i.e. three out of four are predicted correctly.
+Here, GLM achieves an accuracy of `r mean(predict(fit_glm_final, missing_data_x) == missing_data_y)`, i.e. three out of four are predicted correctly.
 
 
 Now for the performance of the GLM on the validation data:
@@ -451,7 +472,7 @@ Training a number of machine learning models and ensembles on the data led to th
 
 It became obvious that all models (including the final GLM) perform far better predictin the 'affected' status than predicting the 'unaffected' status. A possible reason for this is the slight imbalance in the data set. There were approximately two times as many affected patients as there were unaffected patients. Secondly, the visualization and comparison of the biomarker data implies that not every patient who is affected by a liver disease shows highly abnormal values for the biomarkers contained in this data set. It has been shown previously that patients with (chronic) liver disease may present without clinical symptons and values of liver function tests well within the accepted range (Ahmed et al., 2018), which is in line with these findings. Thus, affected patients which do not show significantly different levels of bilirubin, proteins or enzyme activity severely increase the difficulty of distinguishing between those. Furthermore, the affected patients with low levels of the biomarkers are likely to have lead the machine learning approaches to falsely flag unaffected patients as affected. 
 
-In the future, these shortcomings could be remedied by different approaches. First and foremost would be an increase in the number of observations. Since machine learning is a data-driven approach, a larger number of available data often results in better results (as long as over-training is prevented). Another option, based on the present data set, would be either under-sampling of the data with the 'affected' flag or over-sampling of the data with the 'unaffected' flag. This way, the models might be able to better distinguish between those two outcomes. A third approach, which has shown promise in many areas, would be the application of deep learning. 
+In the future, these shortcomings could be remedied by different approaches. First and foremost would be an increase in the number of observations. Since machine learning is a data-driven approach, a larger number of available data often results in better results (as long as over-training is prevented). Another option, based on the present data set, would be either under-sampling of the data with the 'affected' flag or over-sampling of the data with the 'unaffected' flag. This way, the models might be able to better distinguish between those two outcomes. A third approach, which has shown promise in many areas, would be the application of deep learning. All those approached, or a combination thereof, would likely increase the prediction performance and therefore resolve the limitations of this project.
 
 # References
 Ahmed Z, Ahmed U, Walayat S, Ren J, Martin DK, Moole H, Koppe S, Yong S, Dhillon S. Liver function tests in identifying patients with liver disease. 2018. Clin Exp Gastroenterol. doi: 10.2147/CEG.S160537
