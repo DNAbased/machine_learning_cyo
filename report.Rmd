@@ -425,17 +425,33 @@ names(glm_performance) = c("Value")
 kable(glm_performance)
 ```
 
-This shows ...
+While the accuracy of the model is close to 0.8, the very high sensitivity close to 1 in combination with the rather low specificity indicates that predicting 'affected' still occurs very frequently, regardless of the actual outcome.
 
 
 # Final results
-Table again + performance on validation data + performance on missing data
-Bind an empty row and then the new values to the results df
+Training the GLM on the `training` data and testing it on the `test` data led to an accuracy of about 0.77, thereby outperforming all other models and algorithms. The sensitivity was close to 1, with specificity being 0.27. Training this model on the whole `model` data (i.e. the combined `training` data and `test` data), made predictions on the `missing` data and validation on the `validation` data possible. 
+
+For the `missing` data, the prediction accuracy was 0.75. However, since there were only a total of four observations in this data set, the meaningfulness of this is rather limited.
+
+More importantly, the accuracy on the `validation` data showed a slight increase. Simultaneously, the specificity dropped from 0.27 to below 0.2. 
+
+The following table shows all obtained accuracies; note that those were obtained with different models, trained and tested on different fractions of the whole data set:
+```{r results_final}
+results = bind_rows(results, data.frame(Model = c("GLM on missing data", "GLM on validation data"), Accuracy = c(0.750, 0.797)))
+results$Accuracy = round(results$Accuracy, 3)
+kable(results)
+```
+
 
 # Conclusion
 
-The present data implies that not every patient who is affected by a liver disease shows highly abnormal values for the biomarkers contained in this data set. It has been shown previously that patients with (chronic) liver disease may present without clinical symptons and values of liver function tests well within the accepted range (Ahmed et al., 2018), which is in line with these findings. 
+The aim of this project was to predict the affection status of liver patients based on different biomarkers. The available data (besides age and gender) included bilirubin and protein amounts in the patients' blood as well as the activity of three liver-specific enzymes. Based on the data visualization, the most striking differences could be observed for those enzymes as well as the bilirubin levels.
 
+Training a number of machine learning models and ensembles on the data led to the emergence of a generalized linear model (GLM) as the best-performing model in terms of accuracy. This model also showed a very high sensitivity, although the specificity was rather low. Re-training this model on a larger fraction of the data set led to an acceptable performance on a subset of incomplete data, which had been filled with the mean of the data set (accuracy of 0.75). Finally, using the `validation` data showed that the model performed with an accuracy of 0.797. The sensitivity remained very high (0.976), while the specificity was slightly lower than before (0.176).
+
+It became obvious that all models (including the final GLM) perform far better predictin the 'affected' status than predicting the 'unaffected' status. A possible reason for this is the slight imbalance in the data set. There were approximately two times as many affected patients as there were unaffected patients. Secondly, the visualization and comparison of the biomarker data implies that not every patient who is affected by a liver disease shows highly abnormal values for the biomarkers contained in this data set. It has been shown previously that patients with (chronic) liver disease may present without clinical symptons and values of liver function tests well within the accepted range (Ahmed et al., 2018), which is in line with these findings. Thus, affected patients which do not show significantly different levels of bilirubin, proteins or enzyme activity severely increase the difficulty of distinguishing between those. Furthermore, the affected patients with low levels of the biomarkers are likely to have lead the machine learning approaches to falsely flag unaffected patients as affected. 
+
+In the future, these shortcomings could be remedied by different approaches. First and foremost would be an increase in the number of observations. Since machine learning is a data-driven approach, a larger number of available data often results in better results (as long as over-training is prevented). Another option, based on the present data set, would be either under-sampling of the data with the 'affected' flag or over-sampling of the data with the 'unaffected' flag. This way, the models might be able to better distinguish between those two outcomes. A third approach, which has shown promise in many areas, would be the application of deep learning. 
 
 # References
 Ahmed Z, Ahmed U, Walayat S, Ren J, Martin DK, Moole H, Koppe S, Yong S, Dhillon S. Liver function tests in identifying patients with liver disease. 2018. Clin Exp Gastroenterol. doi: 10.2147/CEG.S160537
