@@ -134,9 +134,9 @@ train_data %>% dplyr::select(Affection_status) %>% table() %>% prop.table() # ap
 test_data %>% dplyr::select(Affection_status) %>% table() %>% prop.table() # approx. 70:30 split
 
 # Split data into predictors and outcome
-train_data_x = train_data %>% dplyr::select(-Affection_status, -Identifier)
+train_data_x = train_data %>% dplyr::select(-Affection_status)
 train_data_y = train_data %>% pull(Affection_status)
-test_data_x = test_data %>% dplyr::select(-Affection_status, -Identifier)
+test_data_x = test_data %>% dplyr::select(-Affection_status)
 test_data_y = test_data %>% pull(Affection_status)
 
 # Do a PCA
@@ -307,7 +307,7 @@ results = bind_rows(results, data.frame(Model = c("Ensemble (dim. red.) (1)", "E
 
 
 # Create training set for complete model data
-model_data_x = model_data %>% dplyr::select(-Affection_status, -Identifier)
+model_data_x = model_data %>% dplyr::select(-Affection_status)
 model_data_y = model_data %>% pull(Affection_status)
 
 # Train final model on the original model data
@@ -332,7 +332,7 @@ results = bind_rows(results, data.frame(Model = "GLM on missing data", Accuracy 
 # Prepare validation data (recoding)
 validation_data$Affection_status = as.factor(validation_data$Affection_status)
 validation_data = validation_data %>% mutate(Gender=ifelse(Gender=="Male", 1, 2))
-validation_data_x = validation_data %>% dplyr::select(-Affection_status, -Identifier)
+validation_data_x = validation_data %>% dplyr::select(-Affection_status)
 validation_data_y = validation_data %>% pull(Affection_status)
 
 # Performance
